@@ -1,0 +1,63 @@
+name: Checks
+on:
+  pull_request:
+  push:
+    branches:
+      - development
+
+# Declare default permissions as read only.
+permissions: read-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze-and-test:
+    name: Analyze and test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # The Flutter SDK submodule needs its tags to determine its version.
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Set FLUTTER_ROOT environment variable
+        run: echo "FLUTTER_ROOT=$GITHUB_WORKSPACE/flutter/bin" >> $GITHUB_ENV
+
+      - name: Get packages and run codegen
+        run: bash scripts/install_dependencies_with_submodule.sh
+
+      - name: Analyze
+        run: $FLUTTER_ROOT/flutter analyze --no-fatal-infos
+
+      - name: Test
+        run: $FLUTTER_ROOT/flutter test
+
+  build-android:
+    name: Build Android (debug)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set FLUTTER_ROOT environment variable
+        run: echo "FLUTTER_ROOT=$GITHUB_WORKSPACE/flutter/bin" >> $GITHUB_ENV
+
+      - name: Get packages and run codegen
+        run: bash scripts/install_dependencies_with_submodule.sh
+
+      # Catches native issues such as manifest merge conflicts between plugins.
+      - name: Build debug APK
+        run: $FLUTTER_ROOT/flutter build apk --debug --target-platform android-arm64

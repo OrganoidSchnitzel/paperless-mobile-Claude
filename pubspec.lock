@@ -397,7 +397,7 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: master
+      ref: bbc6a939e29689790f1b64734df39a66334e0be9
       resolved-ref: bbc6a939e29689790f1b64734df39a66334e0be9
       url: "https://github.com/sawankumarbundelkhandi/edge_detection"
     source: git
