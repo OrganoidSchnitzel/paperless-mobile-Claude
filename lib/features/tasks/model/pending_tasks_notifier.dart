@@ -16,33 +16,28 @@ class PendingTasksNotifier extends ValueNotifier<Map<String, TasksView>> {
     super.dispose();
   }
 
-  void listenToTaskChanges(String taskId) {
-    final sub = _api.listenForTaskChanges(taskId).listen((task) {
-      if (value.containsKey(taskId)) {
-        final oldTask = value[taskId]!;
-        if (oldTask.status != task.status) {
-          // Only notify of changes if task status has changed...
-          value = {...value, taskId: task};
-          notifyListeners();
-        }
-      } else {
-        value = {...value, taskId: task};
-        notifyListeners();
-      }
-    });
-    sub
-      ..onDone(() {
-        sub.cancel();
-        value = value..remove(taskId);
-        notifyListeners();
-      })
-      ..onError((_) {
-        sub.cancel();
-        value = value..remove(taskId);
-        notifyListeners();
-      });
+  /// Whether the task with the given [taskId] is currently being tracked.
+  bool isTracking(String taskId) => _subscriptions.containsKey(taskId);
 
-    _subscriptions.putIfAbsent(taskId, () => sub);
+  void listenToTaskChanges(String taskId) {
+    if (isTracking(taskId)) {
+      return;
+    }
+    _subscriptions[taskId] = _api
+        .listenForTaskChanges(taskId)
+        .listen(
+          (task) {
+            value = {...value, taskId: task};
+          },
+          onError: (_) => _onTrackingStopped(taskId),
+          onDone: () => _onTrackingStopped(taskId),
+          cancelOnError: true,
+        );
+  }
+
+  void _onTrackingStopped(String taskId) {
+    _subscriptions.remove(taskId);
+    value = {...value}..remove(taskId);
   }
 
   void stopListeningToTaskChanges([String? taskId]) {

@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:fluttertoast/fluttertoast.dart';
 import 'package:listen_sharing_intent/listen_sharing_intent.dart';
 import 'package:paperless_mobile/constants.dart';
 import 'package:paperless_mobile/core/extensions/context_extensions.dart';
@@ -39,41 +38,50 @@ class _EventListenerShellState extends State<EventListenerShell> {
   @override
   void initState() {
     super.initState();
-    ReceiveSharingIntent.instance.getInitialMedia().then((files) async {
-      if (files.isEmpty) {
-        final shouldShowChangelog = await _shouldShowChangelog;
-        if (shouldShowChangelog && mounted) {
-          ChangelogRoute().push(context);
-        }
-        return;
-      }
-      _onReceiveSharedFiles(files);
-    });
     _subscription = ReceiveSharingIntent.instance.getMediaStream().listen(
       _onReceiveSharedFiles,
     );
     context.read<PendingTasksNotifier>().addListener(_onTasksChanged);
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final userId = context.loggedInUser.appUserId;
-      final notifier = context.read<ConsumptionChangeNotifier>();
-      await notifier.isInitialized;
-      final pendingFiles = notifier.pendingFiles;
-      if (pendingFiles.isEmpty) {
-        return;
-      }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onStartup());
+  }
 
-      final shouldProcess =
-          await showDialog<bool>(
-            useRootNavigator: false,
-            context: context,
-            builder: (context) =>
-                PendingFilesInfoDialog(pendingFiles: pendingFiles),
-          ) ??
-          false;
-      if (shouldProcess) {
-        await consumeLocalFiles(context, files: pendingFiles, userId: userId);
-      }
-    });
+  /// Handles files shared while the app was not running, shows the changelog
+  /// and processes files which have not been uploaded yet, one after another
+  /// to prevent overlapping dialogs and duplicate uploads.
+  Future<void> _onStartup() async {
+    final initialFiles = await ReceiveSharingIntent.instance.getInitialMedia();
+    // Otherwise, the same files would be received again, e.g. after switching
+    // accounts.
+    await ReceiveSharingIntent.instance.reset();
+    if (!mounted) return;
+    if (initialFiles.isNotEmpty) {
+      // The app was opened to upload these files, don't show anything else.
+      await _onReceiveSharedFiles(initialFiles);
+      return;
+    }
+    if (await _shouldShowChangelog && mounted) {
+      await ChangelogRoute().push(context);
+    }
+    if (!mounted) return;
+    final userId = context.loggedInUser.appUserId;
+    final notifier = context.read<ConsumptionChangeNotifier>();
+    await notifier.isInitialized;
+    final pendingFiles = notifier.pendingFiles;
+    if (pendingFiles.isEmpty || !mounted) {
+      return;
+    }
+
+    final shouldProcess =
+        await showDialog<bool>(
+          useRootNavigator: false,
+          context: context,
+          builder: (context) =>
+              PendingFilesInfoDialog(pendingFiles: pendingFiles),
+        ) ??
+        false;
+    if (shouldProcess && mounted) {
+      await consumeLocalFiles(context, files: pendingFiles, userId: userId);
+    }
   }
 
   Future<bool> get _shouldShowChangelog async {
@@ -111,28 +119,32 @@ class _EventListenerShellState extends State<EventListenerShell> {
     }
   }
 
-  void _onReceiveSharedFiles(List<SharedMediaFile> sharedFiles) async {
-    final files = sharedFiles.map((file) => File(file.path)).toList();
-    final userId = context.loggedInAppUserId!;
-    if (files.isNotEmpty) {
-      logger.fi(
-        'Received shared files: \n\t${sharedFiles.map((e) => e.path).join(',\n\t')}',
-        className: runtimeType.toString(),
-        methodName: '_onReceiveSharedFiles',
-      );
-      final notifier = context.read<ConsumptionChangeNotifier>();
-      final addedLocalFiles = await notifier.addFiles(
-        files: files,
-        userId: userId,
-      );
-      if (!mounted) return;
-      consumeLocalFiles(
-        context,
-        files: addedLocalFiles,
-        userId: userId,
-        exitAppAfterConsumed: true,
-      );
+  Future<void> _onReceiveSharedFiles(List<SharedMediaFile> sharedFiles) async {
+    final files = sharedFiles
+        .where((file) => file.path.isNotEmpty)
+        .map((file) => File(file.path))
+        .toList();
+    if (files.isEmpty) {
+      return;
     }
+    final userId = context.loggedInAppUserId!;
+    logger.fi(
+      'Received shared files: \n\t${files.map((e) => e.path).join(',\n\t')}',
+      className: runtimeType.toString(),
+      methodName: '_onReceiveSharedFiles',
+    );
+    final notifier = context.read<ConsumptionChangeNotifier>();
+    final addedLocalFiles = await notifier.addFiles(
+      files: files,
+      userId: userId,
+    );
+    if (!mounted) return;
+    await consumeLocalFiles(
+      context,
+      files: addedLocalFiles,
+      userId: userId,
+      exitAppAfterConsumed: true,
+    );
   }
 
   @override
@@ -185,20 +197,19 @@ Future<void> consumeLocalFile(
   //       SystemNavigator.pop();
   //     }
   //   }
+  if (!context.mounted) return;
   final result = await DocumentUploadRoute(
     $extra: bytes,
     filename: p.basenameWithoutExtension(file.path),
     title: p.basenameWithoutExtension(file.path),
     fileExtension: p.extension(file.path),
     instantUpload: shouldDirectlyUpload,
+    // Show whether the document has been processed by Paperless before
+    // returning to the app the file was shared from.
+    trackProcessing: true,
   ).push<DocumentUploadResult?>(context);
 
   if (result?.success ?? false) {
-    if (context.mounted) {
-      await Fluttertoast.showToast(
-        msg: S.of(context)!.documentSuccessfullyUploadedProcessing,
-      );
-    }
     await consumptionNotifier.discardFile(file, userId: userId);
 
     // if (result.taskId != null) {

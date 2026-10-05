@@ -190,8 +190,10 @@ class DocumentRepository with ChangeNotifierMixin {
     int? archiveSerialNumber,
     void Function(double progress)? onProgressChanged,
   }) {
+    // No key on purpose: Mutations with a key are cached and reused, which
+    // would reuse the document bytes and metadata of a previous upload with
+    // the same filename.
     return Mutation<String?, void>(
-      key: 'create_document/$filename',
       mutationFn: (_) {
         return _api.create(
           documentBytes,

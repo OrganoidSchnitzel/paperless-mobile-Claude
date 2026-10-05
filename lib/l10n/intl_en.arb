@@ -1197,5 +1197,35 @@
   "youHaveNoViewsOnYourDashboardYet": "You have not added any views to your dashboard yet.",
   "@youHaveNoViewsOnYourDashboardYet": {},
   "youreOffline": "You're offline.",
-  "@youreOffline": {}
+  "@youreOffline": {},
+  "scannerType": "Document scanner",
+  "@scannerType": {},
+  "scannerTypeAutomatic": "Automatic",
+  "@scannerTypeAutomatic": {},
+  "scannerTypeAutomaticDescription": "Uses the system document scanner (Google ML Kit or Apple VisionKit) with automatic edge detection and image enhancement. Falls back to the built-in scanner if unavailable.",
+  "@scannerTypeAutomaticDescription": {},
+  "scannerTypeEdgeDetection": "Built-in scanner",
+  "@scannerTypeEdgeDetection": {},
+  "scannerTypeEdgeDetectionDescription": "Uses the built-in OpenCV based scanner, which does not require Google Play Services.",
+  "@scannerTypeEdgeDetectionDescription": {},
+  "documentUploadProgress": "Uploading... {progress}%",
+  "@documentUploadProgress": {
+    "placeholders": {
+      "progress": {
+        "type": "int"
+      }
+    }
+  },
+  "documentUploadFailed": "Upload failed",
+  "@documentUploadFailed": {},
+  "documentUploadedWaitingForProcessing": "Uploaded. Waiting for Paperless to process the document...",
+  "@documentUploadedWaitingForProcessing": {},
+  "documentProcessedSuccessfully": "Document has been successfully processed by Paperless.",
+  "@documentProcessedSuccessfully": {},
+  "documentProcessingFailed": "Paperless could not process the document",
+  "@documentProcessingFailed": {},
+  "documentProcessingContinuesInBackground": "You can close this screen, the document will still be processed by Paperless.",
+  "@documentProcessingContinuesInBackground": {},
+  "retry": "Retry",
+  "@retry": {}
 }

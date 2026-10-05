@@ -38,6 +38,11 @@ class DocumentScannerCubit extends Cubit<DocumentScannerState> {
         .where((event) => event.path.endsWith(".jpeg"))
         .toList();
     final validScans = <File>[];
+    // Restore the scans in the order they were captured.
+    final lastModified = {
+      for (final file in scans) file: await file.lastModified(),
+    };
+    scans.sort((a, b) => lastModified[a]!.compareTo(lastModified[b]!));
     for (final file in scans) {
       final length = await file.length();
       if (length == 0) {
@@ -66,11 +71,14 @@ class DocumentScannerCubit extends Cubit<DocumentScannerState> {
     );
   }
 
-  void addScan(File file) async {
+  void addScans(List<File> files) {
+    if (files.isEmpty) {
+      return;
+    }
     emit(
       DocumentScannerState(
         status: LoadingStatus.loaded,
-        scans: [...state.scans, file],
+        scans: [...state.scans, ...files],
       ),
     );
   }
@@ -97,7 +105,7 @@ class DocumentScannerCubit extends Cubit<DocumentScannerState> {
 
   Future<void> reset() async {
     try {
-      Future.wait([for (final file in state.scans) file.delete()]);
+      await Future.wait([for (final file in state.scans) file.delete()]);
       imageCache.clear();
     } catch (_) {
       addError(TransientPaperlessApiError(code: ErrorCode.scanRemoveFailed));

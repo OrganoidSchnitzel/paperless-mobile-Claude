@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:cached_query_flutter/cached_query_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
@@ -9,7 +10,7 @@ import 'package:intl/intl.dart';
 import 'package:paperless_mobile/api/paperless_api.dart';
 import 'package:paperless_mobile/core/extensions/context_extensions.dart';
 import 'package:paperless_mobile/core/extensions/flutter_extensions.dart';
-import 'package:paperless_mobile/core/model/info_message_exception.dart';
+import 'package:paperless_mobile/core/translation/error_code_localization_mapper.dart';
 import 'package:paperless_mobile/core/widgets/form_builder_fields/form_builder_localized_date_picker.dart';
 import 'package:paperless_mobile/core/widgets/future_or_builder.dart';
 import 'package:paperless_mobile/features/labels/tags/view/widgets/tags_form_field.dart';
@@ -28,12 +29,35 @@ class DocumentUploadResult {
   DocumentUploadResult(this.success, this.taskId);
 }
 
+enum _UploadStatus {
+  /// The document has not been uploaded yet (or the upload failed).
+  idle,
+  uploading,
+
+  /// The document has been uploaded and is being processed by Paperless.
+  processing,
+  processed,
+  processingFailed,
+
+  /// The document has been uploaded, but its processing status could not be
+  /// determined.
+  processingUnknown;
+
+  bool get isUploaded =>
+      this != _UploadStatus.idle && this != _UploadStatus.uploading;
+}
+
 class DocumentUploadPreparationPage extends StatefulWidget {
   final FutureOr<Uint8List> fileBytes;
   final String? title;
   final String? filename;
   final String? fileExtension;
   final bool instantUpload;
+
+  /// If true, the page stays open after the upload and shows whether the
+  /// document has been processed by Paperless. Otherwise, the page is closed
+  /// as soon as the document has been uploaded.
+  final bool trackProcessing;
 
   const DocumentUploadPreparationPage({
     super.key,
@@ -42,6 +66,7 @@ class DocumentUploadPreparationPage extends StatefulWidget {
     this.filename,
     this.fileExtension,
     this.instantUpload = false,
+    this.trackProcessing = false,
   });
 
   @override
@@ -58,8 +83,14 @@ class _DocumentUploadPreparationPageState
   final _now = DateTime.now();
 
   Map<String, String> _errors = {};
-  double? _uploadProgress;
   late bool _syncTitleAndFilename;
+
+  _UploadStatus _status = _UploadStatus.idle;
+  double? _uploadProgress;
+  String? _uploadError;
+  String? _taskId;
+  TasksView? _task;
+  PendingTasksNotifier? _tasksNotifier;
 
   @override
   void initState() {
@@ -73,32 +104,49 @@ class _DocumentUploadPreparationPageState
   }
 
   @override
+  void dispose() {
+    _tasksNotifier?.removeListener(_onTasksChanged);
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    return PopScope<DocumentUploadResult>(
+      // Prevent leaving the page while uploading, otherwise the caller cannot
+      // know whether the upload succeeded.
+      canPop: !_status.isUploaded && _status != _UploadStatus.uploading,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && _status.isUploaded) {
+          _close();
+        }
+      },
+      child: _buildScaffold(context),
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context) {
     return Scaffold(
       extendBodyBehindAppBar: false,
       resizeToAvoidBottomInset: true,
       floatingActionButton: Visibility(
-        visible: MediaQuery.of(context).viewInsets.bottom == 0,
+        visible:
+            MediaQuery.of(context).viewInsets.bottom == 0 &&
+            _status == _UploadStatus.idle,
         child: FloatingActionButton.extended(
           heroTag: "fab_document_upload",
-          onPressed: _uploadProgress == null ? _onSubmit : null,
-          label: _uploadProgress == null
-              ? Text(S.of(context)!.upload)
-              : Text(S.of(context)!.documentUploadUploading),
-          icon: _uploadProgress == null
-              ? const Icon(Icons.upload)
-              : SizedBox(
-                  height: 24,
-                  width: 24,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 3,
-                    value: _uploadProgress,
-                  ),
-                ).padded(4),
+          onPressed: _onSubmit,
+          label: Text(
+            _uploadError == null
+                ? S.of(context)!.upload
+                : S.of(context)!.retry,
+          ),
+          icon: Icon(_uploadError == null ? Icons.upload : Icons.refresh),
         ),
       ),
+      bottomNavigationBar: _buildStatusPanel(context),
       body: FormBuilder(
         key: _formKey,
+        enabled: _status == _UploadStatus.idle,
         child: NestedScrollView(
           headerSliverBuilder: (context, innerBoxIsScrolled) => [
             SliverOverlapAbsorber(
@@ -309,55 +357,97 @@ class _DocumentUploadPreparationPageState
   }
 
   void _onSubmit() async {
+    if (_status != _UploadStatus.idle) {
+      return;
+    }
     if (!(_formKey.currentState?.saveAndValidate() ?? false)) {
       return;
     }
+    final formValues = _formKey.currentState!.value;
+    final correspondent = formValues['correspondent'] as int?;
+    final docType = formValues['document_type'] as int?;
+    final tags = formValues['tags'] as TagsQuery?;
+    final createdAt = formValues['created'] as FormDateTime?;
+    final title = formValues['title'] as String;
+    final asn = formValues['asn'] as int?;
+    final filename = _padWithExtension(
+      formValues[fkFileName] as String,
+      widget.fileExtension,
+    );
+
+    setState(() {
+      _status = _UploadStatus.uploading;
+      _uploadProgress = null;
+      _uploadError = null;
+      _errors = {};
+    });
     try {
-      final formValues = _formKey.currentState!.value;
-
-      final correspondent = formValues['correspondent'] as int?;
-      final docType = formValues['document_type'] as int?;
-      final tags = formValues['tags'] as TagsQuery?;
-      final createdAt = formValues['created'] as FormDateTime?;
-      final title = formValues['title'] as String;
-
-      final asn = formValues['asn'] as int?;
-      final mutationState = await context.documentRepository
+      final documentRepository = context.documentRepository;
+      final mutationState = await documentRepository
           .createDocumentMutation(
             await widget.fileBytes,
-            filename: _padWithExtension(
-              _formKey.currentState?.value[fkFileName],
-              widget.fileExtension,
-            ),
+            filename: filename,
             title: title,
             documentType: docType,
             correspondent: correspondent,
             tags: tags?.mapOrNull(ids: (value) => value.include) ?? [],
             createdAt: createdAt?.toDateTime(),
             archiveSerialNumber: asn,
+            onProgressChanged: _onUploadProgressChanged,
           )
           .mutate();
+      // Mutations do not throw, errors are returned as part of the state.
+      if (mutationState is MutationError) {
+        final error = mutationState as MutationError;
+        Error.throwWithStackTrace(error.error, error.stackTrace);
+      }
 
       final taskId = mutationState.data;
-      if (mounted) {
-        if (taskId != null) {
-          context.read<PendingTasksNotifier>().listenToTaskChanges(taskId);
-        }
+      if (!mounted) return;
+      if (taskId != null) {
+        context.read<PendingTasksNotifier>().listenToTaskChanges(taskId);
+      }
+      if (!widget.trackProcessing || taskId == null) {
+        // For paperless versions older than 1.11.3, the task id is always null,
+        // so the processing status cannot be tracked.
         showSnackBar(
           context,
           S.of(context)!.documentSuccessfullyUploadedProcessing,
         );
-        context.pop(DocumentUploadResult(true, mutationState.data));
+        context.pop(DocumentUploadResult(true, taskId));
+        return;
       }
-    } on PaperlessApiException catch (error) {
-      if (mounted) {
-        showInfoMessage(
-          context,
-          InfoMessageException(code: error.code, message: error.details),
-        );
-      }
+      setState(() {
+        _taskId = taskId;
+        _status = _UploadStatus.processing;
+      });
+      _tasksNotifier = context.read<PendingTasksNotifier>()
+        ..addListener(_onTasksChanged);
+      _onTasksChanged();
+    } on PaperlessApiException catch (error, stackTrace) {
+      if (!mounted) return;
+      _onUploadFailed(
+        translateError(context, error.code),
+        details: error.details,
+      );
+      logger.fe(
+        "Document upload failed.",
+        className: runtimeType.toString(),
+        methodName: "_onSubmit",
+        error: error,
+        stackTrace: stackTrace,
+      );
     } on PaperlessFormValidationException catch (exception) {
+      if (!mounted) return;
       setState(() => _errors = exception.validationMessages);
+      _onUploadFailed(
+        exception.unspecificErrorMessage() ??
+            S.of(context)!.couldNotUploadDocument,
+        details: exception.validationMessages.entries
+            .where((e) => e.key != 'title' && e.key != 'non_field_errors')
+            .map((e) => "${e.key}: ${e.value}")
+            .join("\n"),
+      );
     } catch (error, stackTrace) {
       logger.fe(
         "An unknown error occurred during document upload.",
@@ -366,14 +456,164 @@ class _DocumentUploadPreparationPageState
         error: error,
         stackTrace: stackTrace,
       );
-      if (mounted) {
-        showErrorMessage(
-          context,
-          const PaperlessApiException.unknown(),
-          stackTrace,
-        );
-      }
+      if (!mounted) return;
+      _onUploadFailed(
+        S.of(context)!.couldNotUploadDocument,
+        details: error.toString(),
+      );
     }
+  }
+
+  void _onUploadProgressChanged(double progress) {
+    if (!mounted || _status != _UploadStatus.uploading) {
+      return;
+    }
+    // Avoid rebuilding the page for every chunk which is sent.
+    final previousPercent = ((_uploadProgress ?? -1) * 100).floor();
+    if ((progress * 100).floor() != previousPercent) {
+      setState(() => _uploadProgress = progress);
+    }
+  }
+
+  void _onUploadFailed(String message, {String? details}) {
+    setState(() {
+      _status = _UploadStatus.idle;
+      _uploadProgress = null;
+      _uploadError = [
+        message,
+        if (details != null && details.trim().isNotEmpty) details,
+      ].join("\n");
+    });
+  }
+
+  void _onTasksChanged() {
+    final taskId = _taskId;
+    final notifier = _tasksNotifier;
+    if (!mounted || taskId == null || notifier == null) {
+      return;
+    }
+    final task = notifier.value[taskId];
+    if (task != null) {
+      setState(() {
+        _task = task;
+        _status = switch (task.status) {
+          StatusEnum.success => _UploadStatus.processed,
+          StatusEnum.failure ||
+          StatusEnum.revoked => _UploadStatus.processingFailed,
+          _ => _UploadStatus.processing,
+        };
+      });
+    } else if (!notifier.isTracking(taskId) &&
+        _status == _UploadStatus.processing) {
+      // Tracking stopped without a final result, e.g. due to network issues.
+      setState(() => _status = _UploadStatus.processingUnknown);
+    }
+  }
+
+  void _close() {
+    context.pop(DocumentUploadResult(true, _taskId));
+  }
+
+  Widget? _buildStatusPanel(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final uploadError = _uploadError;
+    if (_status == _UploadStatus.idle && uploadError == null) {
+      return null;
+    }
+
+    final (Widget icon, String title, String? subtitle) = switch (_status) {
+      _UploadStatus.idle => (
+        Icon(Icons.error_outline, color: colorScheme.error),
+        S.of(context)!.documentUploadFailed,
+        uploadError,
+      ),
+      _UploadStatus.uploading => (
+        const Icon(Icons.cloud_upload_outlined),
+        _uploadProgress == null
+            ? S.of(context)!.documentUploadUploading
+            : S.of(context)!.documentUploadProgress(
+                (_uploadProgress! * 100).round(),
+              ),
+        null,
+      ),
+      _UploadStatus.processing => (
+        const Icon(Icons.hourglass_top),
+        S.of(context)!.documentUploadedWaitingForProcessing,
+        S.of(context)!.documentProcessingContinuesInBackground,
+      ),
+      _UploadStatus.processed => (
+        Icon(Icons.check_circle_outline, color: colorScheme.primary),
+        S.of(context)!.documentProcessedSuccessfully,
+        null,
+      ),
+      _UploadStatus.processingFailed => (
+        Icon(Icons.error_outline, color: colorScheme.error),
+        S.of(context)!.documentProcessingFailed,
+        _task?.result,
+      ),
+      _UploadStatus.processingUnknown => (
+        const Icon(Icons.cloud_done_outlined),
+        S.of(context)!.documentSuccessfullyUploadedProcessing,
+        S.of(context)!.documentProcessingContinuesInBackground,
+      ),
+    };
+    final showProgress =
+        _status == _UploadStatus.uploading ||
+        _status == _UploadStatus.processing;
+
+    return Material(
+      color: _status == _UploadStatus.idle
+          ? colorScheme.errorContainer
+          : colorScheme.surfaceContainerHigh,
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (showProgress)
+              LinearProgressIndicator(
+                value: _status == _UploadStatus.uploading
+                    ? _uploadProgress
+                    : null,
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: Row(
+                children: [
+                  icon,
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(title, style: textTheme.titleSmall),
+                        if (subtitle != null)
+                          Text(
+                            subtitle,
+                            style: textTheme.bodySmall,
+                            maxLines: 5,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
+                    ),
+                  ),
+                  if (_status.isUploaded) ...[
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      onPressed: _close,
+                      child: Text(S.of(context)!.done),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   String _padWithExtension(String source, [String? extension]) {
