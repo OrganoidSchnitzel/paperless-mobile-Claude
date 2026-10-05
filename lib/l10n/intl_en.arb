@@ -1227,5 +1227,17 @@
   "documentProcessingContinuesInBackground": "You can close this screen, the document will still be processed by Paperless.",
   "@documentProcessingContinuesInBackground": {},
   "retry": "Retry",
-  "@retry": {}
+  "@retry": {},
+  "restoringScans": "Restoring scans...",
+  "@restoringScans": {},
+  "couldNotRestoreScans": "Your previous scans could not be restored.",
+  "@couldNotRestoreScans": {},
+  "deleteAllScansConfirmation": "{count, plural, one{Do you want to delete the scanned page?} other{Do you want to delete all {count} scanned pages?}}",
+  "@deleteAllScansConfirmation": {
+    "placeholders": {
+      "count": {
+        "type": "num"
+      }
+    }
+  }
 }

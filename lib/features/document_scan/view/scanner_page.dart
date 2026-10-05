@@ -12,6 +12,8 @@ import 'package:paperless_mobile/core/bloc/loading_status.dart';
 import 'package:paperless_mobile/core/extensions/context_extensions.dart';
 import 'package:paperless_mobile/core/global/constants.dart';
 import 'package:paperless_mobile/core/model/info_message_exception.dart';
+import 'package:paperless_mobile/core/widgets/dialog_utils/dialog_cancel_button.dart';
+import 'package:paperless_mobile/core/widgets/dialog_utils/dialog_confirm_button.dart';
 import 'package:paperless_mobile/features/app_drawer/view/app_drawer.dart';
 import 'package:paperless_mobile/features/document_scan/cubit/document_scanner_cubit.dart';
 import 'package:paperless_mobile/features/document_scan/service/document_scanner_service.dart';
@@ -73,9 +75,9 @@ class _ScannerPageState extends State<ScannerPage>
             builder: (context, state) {
               return switch (state.status) {
                 LoadingStatus.initial => _buildEmptyState(),
-                LoadingStatus.loading => Center(child: Text("Restoring...")),
+                LoadingStatus.loading => _buildLoadingState(),
                 LoadingStatus.loaded => _buildImageGrid(state.scans),
-                LoadingStatus.error => Placeholder(),
+                LoadingStatus.error => _buildErrorState(),
               };
             },
           ),
@@ -257,6 +259,48 @@ class _ScannerPageState extends State<ScannerPage>
     }
   }
 
+  Widget _buildLoadingState() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 16),
+          Text(S.of(context)!.restoringScans),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 48,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              S.of(context)!.couldNotRestoreScans,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            TextButton.icon(
+              icon: const Icon(Icons.refresh),
+              label: Text(S.of(context)!.tryAgain),
+              onPressed: () => context.read<DocumentScannerCubit>().initialize(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildEmptyState() {
     return Center(
       child: Padding(
@@ -328,10 +372,36 @@ class _ScannerPageState extends State<ScannerPage>
     );
   }
 
-  void _reset(BuildContext context) {
+  void _reset(BuildContext context) async {
+    final cubit = context.read<DocumentScannerCubit>();
+    final shouldDelete =
+        await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(S.of(context)!.confirmDeletion),
+            content: Text(
+              S
+                  .of(context)!
+                  .deleteAllScansConfirmation(cubit.state.scans.length),
+            ),
+            actions: [
+              const DialogCancelButton(),
+              DialogConfirmButton<bool>(
+                label: S.of(context)!.delete,
+                style: DialogConfirmButtonStyle.danger,
+                returnValue: true,
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!shouldDelete || !context.mounted) {
+      return;
+    }
     try {
-      context.read<DocumentScannerCubit>().reset();
+      await cubit.reset();
     } on PaperlessApiException catch (error, stackTrace) {
+      if (!context.mounted) return;
       showErrorMessage(context, error, stackTrace);
     }
   }

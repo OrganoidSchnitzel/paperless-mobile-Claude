@@ -1227,5 +1227,17 @@
   "documentProcessingContinuesInBackground": "Du kannst diese Ansicht schließen, das Dokument wird trotzdem von Paperless verarbeitet.",
   "@documentProcessingContinuesInBackground": {},
   "retry": "Erneut versuchen",
-  "@retry": {}
+  "@retry": {},
+  "restoringScans": "Scans werden wiederhergestellt...",
+  "@restoringScans": {},
+  "couldNotRestoreScans": "Deine vorherigen Scans konnten nicht wiederhergestellt werden.",
+  "@couldNotRestoreScans": {},
+  "deleteAllScansConfirmation": "{count, plural, one{Möchtest du die gescannte Seite löschen?} other{Möchtest du alle {count} gescannten Seiten löschen?}}",
+  "@deleteAllScansConfirmation": {
+    "placeholders": {
+      "count": {
+        "type": "num"
+      }
+    }
+  }
 }
