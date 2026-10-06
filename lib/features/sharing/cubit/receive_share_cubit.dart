@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:paperless_mobile/core/service/file_service.dart';
+import 'package:paperless_mobile/features/sharing/model/auto_upload_queue.dart';
 import 'package:path/path.dart' as p;
 
 part 'receive_share_state.dart';
@@ -57,6 +58,7 @@ class ConsumptionChangeNotifier extends ChangeNotifier {
     if (file.path.startsWith(consumptionDirectory.path)) {
       await file.delete();
     }
+    await AutoUploadQueue(userId: userId).remove(file);
     return loadFromConsumptionDirectory(userId: userId);
   }
 

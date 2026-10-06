@@ -1239,5 +1239,33 @@
         "type": "num"
       }
     }
+  },
+  "autoUploadPendingFiles": "Upload pending files automatically",
+  "@autoUploadPendingFiles": {},
+  "autoUploadPendingFilesDescription": "Files shared while offline are uploaded without the upload form once you're back online and the app is open",
+  "@autoUploadPendingFilesDescription": {},
+  "fileWillBeUploadedWhenOnline": "{filename} will be uploaded once you're back online.",
+  "@fileWillBeUploadedWhenOnline": {
+    "placeholders": {
+      "filename": {
+        "type": "String"
+      }
+    }
+  },
+  "pendingFilesUploaded": "{count, plural, one{Uploaded 1 pending file.} other{Uploaded {count} pending files.}}",
+  "@pendingFilesUploaded": {
+    "placeholders": {
+      "count": {
+        "type": "num"
+      }
+    }
+  },
+  "couldNotUploadPendingFiles": "{count, plural, one{1 pending file could not be uploaded.} other{{count} pending files could not be uploaded.}}",
+  "@couldNotUploadPendingFiles": {
+    "placeholders": {
+      "count": {
+        "type": "num"
+      }
+    }
   }
 }

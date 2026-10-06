@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:paperless_mobile/core/extensions/context_extensions.dart';
 import 'package:paperless_mobile/core/store/slices/local_user_account.dart';
 import 'package:paperless_mobile/features/settings/view/widgets/app_logs_tile.dart';
+import 'package:paperless_mobile/features/settings/view/widgets/auto_upload_pending_files_setting.dart';
 import 'package:paperless_mobile/features/settings/view/widgets/biometric_authentication_setting.dart';
 import 'package:paperless_mobile/features/settings/view/widgets/changelogs_tile.dart';
 import 'package:paperless_mobile/features/settings/view/widgets/clear_storage_settings.dart';
@@ -41,6 +42,7 @@ class SettingsPage extends StatelessWidget {
           const ScannerTypeSetting(),
           const EnforcePdfUploadSetting(),
           const SkipDocumentPreprationOnShareSetting(),
+          const AutoUploadPendingFilesSetting(),
           _buildSectionHeader(context, S.of(context)!.storage),
           const ClearCacheSetting(),
           _buildSectionHeader(context, S.of(context)!.misc),

@@ -1239,5 +1239,33 @@
         "type": "num"
       }
     }
+  },
+  "autoUploadPendingFiles": "Ausstehende Dateien automatisch hochladen",
+  "@autoUploadPendingFiles": {},
+  "autoUploadPendingFilesDescription": "Offline geteilte Dateien werden ohne Upload-Formular hochgeladen, sobald du wieder online bist und die App geöffnet ist",
+  "@autoUploadPendingFilesDescription": {},
+  "fileWillBeUploadedWhenOnline": "{filename} wird hochgeladen, sobald du wieder online bist.",
+  "@fileWillBeUploadedWhenOnline": {
+    "placeholders": {
+      "filename": {
+        "type": "String"
+      }
+    }
+  },
+  "pendingFilesUploaded": "{count, plural, one{1 ausstehende Datei wurde hochgeladen.} other{{count} ausstehende Dateien wurden hochgeladen.}}",
+  "@pendingFilesUploaded": {
+    "placeholders": {
+      "count": {
+        "type": "num"
+      }
+    }
+  },
+  "couldNotUploadPendingFiles": "{count, plural, one{1 ausstehende Datei konnte nicht hochgeladen werden.} other{{count} ausstehende Dateien konnten nicht hochgeladen werden.}}",
+  "@couldNotUploadPendingFiles": {
+    "placeholders": {
+      "count": {
+        "type": "num"
+      }
+    }
   }
 }

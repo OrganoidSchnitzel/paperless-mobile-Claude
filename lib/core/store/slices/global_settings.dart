@@ -23,6 +23,7 @@ class GlobalSettings {
     this.skipDocumentPreprarationOnUpload = false,
     this.disableAnimations = false,
     this.scannerType = ScannerType.automatic,
+    this.autoUploadPendingFiles = true,
     this.knownHosts = const [],
   });
 
@@ -38,6 +39,10 @@ class GlobalSettings {
   final bool disableAnimations;
   @JsonKey(unknownEnumValue: ScannerType.automatic)
   final ScannerType scannerType;
+
+  /// Whether files which could not be uploaded because the device was offline
+  /// are uploaded automatically once it is back online.
+  final bool autoUploadPendingFiles;
   final List<String> knownHosts;
 
   Map<String, dynamic> toJson() => _$GlobalSettingsToJson(this);
