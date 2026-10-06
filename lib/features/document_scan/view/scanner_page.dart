@@ -2,7 +2,6 @@ import 'dart:developer' as dev;
 import 'dart:io';
 import 'dart:math';
 
-import 'package:edge_detection/edge_detection.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -13,9 +12,12 @@ import 'package:paperless_mobile/core/bloc/loading_status.dart';
 import 'package:paperless_mobile/core/extensions/context_extensions.dart';
 import 'package:paperless_mobile/core/global/constants.dart';
 import 'package:paperless_mobile/core/model/info_message_exception.dart';
-import 'package:paperless_mobile/core/service/file_service.dart';
+import 'package:paperless_mobile/core/widgets/dialog_utils/dialog_cancel_button.dart';
+import 'package:paperless_mobile/core/widgets/dialog_utils/dialog_confirm_button.dart';
 import 'package:paperless_mobile/features/app_drawer/view/app_drawer.dart';
 import 'package:paperless_mobile/features/document_scan/cubit/document_scanner_cubit.dart';
+import 'package:paperless_mobile/features/document_scan/service/document_scanner_service.dart';
+import 'package:paperless_mobile/features/document_scan/service/scan_pdf_builder.dart';
 import 'package:paperless_mobile/features/document_scan/view/widgets/export_scans_dialog.dart';
 import 'package:paperless_mobile/features/document_scan/view/widgets/scanned_image_item.dart';
 import 'package:paperless_mobile/features/document_search/view/sliver_search_bar.dart';
@@ -27,8 +29,6 @@ import 'package:paperless_mobile/helpers/message_helpers.dart';
 import 'package:paperless_mobile/helpers/permission_helpers.dart';
 import 'package:paperless_mobile/routing/routes/scanner_route.dart';
 import 'package:path/path.dart' as p;
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:sliver_tools/sliver_tools.dart';
 
@@ -75,9 +75,9 @@ class _ScannerPageState extends State<ScannerPage>
             builder: (context, state) {
               return switch (state.status) {
                 LoadingStatus.initial => _buildEmptyState(),
-                LoadingStatus.loading => Center(child: Text("Restoring...")),
+                LoadingStatus.loading => _buildLoadingState(),
                 LoadingStatus.loaded => _buildImageGrid(state.scans),
-                LoadingStatus.error => Placeholder(),
+                LoadingStatus.error => _buildErrorState(),
               };
             },
           ),
@@ -221,32 +221,21 @@ class _ScannerPageState extends State<ScannerPage>
 
   void _openDocumentScanner(BuildContext context) async {
     final isGranted = await askForPermission(Permission.camera);
-    if (!isGranted) {
+    if (!isGranted || !context.mounted) {
       return;
     }
-    final file = await FileService.instance.allocateTemporaryFile(
-      PaperlessDirectoryType.scans,
-      extension: 'jpeg',
-      create: true,
-    );
-    if (kDebugMode) {
-      dev.log('[ScannerPage] Created temporary file: ${file.path}');
-    }
-
-    final success = await EdgeDetection.detectEdge(file.path);
-    if (!success) {
+    final scannerType = context.localStore.state.globalSettings.scannerType;
+    try {
+      final scans = await DocumentScannerService.scan(type: scannerType);
       if (kDebugMode) {
-        dev.log(
-          '[ScannerPage] Scan either not successful or canceled by user.',
-        );
+        dev.log('[ScannerPage] Scanned ${scans.length} page(s).');
       }
-      return;
+      if (!context.mounted) return;
+      context.read<DocumentScannerCubit>().addScans(scans);
+    } catch (error, stackTrace) {
+      if (!context.mounted) return;
+      showGenericError(context, error, stackTrace);
     }
-    if (kDebugMode) {
-      dev.log('[ScannerPage] Wrote image to temporary file: ${file.path}');
-    }
-    if (!context.mounted) return;
-    context.read<DocumentScannerCubit>().addScan(file);
   }
 
   void _onPrepareDocumentUpload(BuildContext context, List<File> scans) async {
@@ -268,6 +257,48 @@ class _ScannerPageState extends State<ScannerPage>
       //     .read<PendingTasksNotifier>()
       //     .listenToTaskChanges(uploadResult!.taskId!);
     }
+  }
+
+  Widget _buildLoadingState() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 16),
+          Text(S.of(context)!.restoringScans),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 48,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              S.of(context)!.couldNotRestoreScans,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            TextButton.icon(
+              icon: const Icon(Icons.refresh),
+              label: Text(S.of(context)!.tryAgain),
+              onPressed: () => context.read<DocumentScannerCubit>().initialize(),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildEmptyState() {
@@ -341,10 +372,36 @@ class _ScannerPageState extends State<ScannerPage>
     );
   }
 
-  void _reset(BuildContext context) {
+  void _reset(BuildContext context) async {
+    final cubit = context.read<DocumentScannerCubit>();
+    final shouldDelete =
+        await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(S.of(context)!.confirmDeletion),
+            content: Text(
+              S
+                  .of(context)!
+                  .deleteAllScansConfirmation(cubit.state.scans.length),
+            ),
+            actions: [
+              const DialogCancelButton(),
+              DialogConfirmButton<bool>(
+                label: S.of(context)!.delete,
+                style: DialogConfirmButtonStyle.danger,
+                returnValue: true,
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!shouldDelete || !context.mounted) {
+      return;
+    }
     try {
-      context.read<DocumentScannerCubit>().reset();
+      await cubit.reset();
     } on PaperlessApiException catch (error, stackTrace) {
+      if (!context.mounted) return;
       showErrorMessage(context, error, stackTrace);
     }
   }
@@ -396,22 +453,12 @@ class _ScannerPageState extends State<ScannerPage>
     assert(files.isNotEmpty);
     if (files.length == 1 && !forcePdf) {
       final ext = p.extension(files.first.path);
-      return AssembledFile(ext, files.first.readAsBytesSync());
+      return AssembledFile(ext, await files.first.readAsBytes());
     }
-    final doc = pw.Document();
-    for (final file in files) {
-      final img = pw.MemoryImage(file.readAsBytesSync());
-      doc.addPage(
-        pw.Page(
-          pageFormat: PdfPageFormat(
-            img.width!.toDouble(),
-            img.height!.toDouble(),
-          ),
-          build: (context) => pw.Image(img),
-        ),
-      );
-    }
-    return AssembledFile('.pdf', await doc.save());
+    final images = await Future.wait([
+      for (final file in files) file.readAsBytes(),
+    ]);
+    return AssembledFile('.pdf', await buildPdfFromImages(images));
   }
 }
 

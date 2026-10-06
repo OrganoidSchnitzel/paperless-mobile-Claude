@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:paperless_mobile/features/settings/model/color_scheme_option.dart';
 import 'package:paperless_mobile/features/settings/model/file_download_type.dart';
+import 'package:paperless_mobile/features/settings/model/scanner_type.dart';
 
 part 'global_settings.g.dart';
 
@@ -21,6 +22,8 @@ class GlobalSettings {
     this.enforceSinglePagePdfUpload = false,
     this.skipDocumentPreprarationOnUpload = false,
     this.disableAnimations = false,
+    this.scannerType = ScannerType.automatic,
+    this.autoUploadPendingFiles = true,
     this.knownHosts = const [],
   });
 
@@ -34,6 +37,12 @@ class GlobalSettings {
   final bool enforceSinglePagePdfUpload;
   final bool skipDocumentPreprarationOnUpload;
   final bool disableAnimations;
+  @JsonKey(unknownEnumValue: ScannerType.automatic)
+  final ScannerType scannerType;
+
+  /// Whether files which could not be uploaded because the device was offline
+  /// are uploaded automatically once it is back online.
+  final bool autoUploadPendingFiles;
   final List<String> knownHosts;
 
   Map<String, dynamic> toJson() => _$GlobalSettingsToJson(this);

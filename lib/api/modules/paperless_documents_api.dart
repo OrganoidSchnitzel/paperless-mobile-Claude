@@ -92,8 +92,6 @@ class PaperlessDocumentsApiImpl implements PaperlessDocumentsApi {
         MapEntry('correspondent', jsonEncode(correspondent)),
       if (documentType != null)
         MapEntry('document_type', jsonEncode(documentType)),
-      if (storagePath != null)
-        MapEntry('storage_path', jsonEncode(storagePath)),
       if (archiveSerialNumber != null)
         MapEntry('archive_serial_number', jsonEncode(archiveSerialNumber)),
       for (final tag in tags) MapEntry('tags', tag.toString()),
@@ -105,7 +103,8 @@ class PaperlessDocumentsApiImpl implements PaperlessDocumentsApi {
       final response = await client.post<String>(
         '/api/documents/post_document/',
         data: formData,
-        options: Options(sendTimeout: 60.seconds),
+        // Large documents can take a while on slow mobile connections.
+        options: Options(sendTimeout: 5.minutes),
         onSendProgress: (count, total) {
           onProgressChanged?.call(count.toDouble() / total.toDouble());
         },

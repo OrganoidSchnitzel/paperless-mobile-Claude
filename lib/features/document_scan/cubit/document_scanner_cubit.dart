@@ -29,48 +29,67 @@ class DocumentScannerCubit extends Cubit<DocumentScannerState> {
       methodName: "initialize",
     );
     emit(const DocumentScannerState(status: LoadingStatus.loading));
-    final tempDir = FileService.instance.temporaryScansDirectory;
-    if (!await tempDir.exists()) {
-      await tempDir.create(recursive: true);
-    }
-    final allFiles = tempDir.list().whereType<File>();
-    final scans = await allFiles
-        .where((event) => event.path.endsWith(".jpeg"))
-        .toList();
-    final validScans = <File>[];
-    for (final file in scans) {
-      final length = await file.length();
-      if (length == 0) {
-        await file.delete();
-        logger.fw(
-          'Previous scan ${file.path} was empty and has been deleted.',
-          className: runtimeType.toString(),
-          methodName: "initialize",
-        );
-        continue;
+    try {
+      final tempDir = FileService.instance.temporaryScansDirectory;
+      if (!await tempDir.exists()) {
+        await tempDir.create(recursive: true);
       }
-      validScans.add(file);
+      final allFiles = tempDir.list().whereType<File>();
+      final scans = await allFiles
+          .where((event) => event.path.endsWith(".jpeg"))
+          .toList();
+      final validScans = <File>[];
+      // Restore the scans in the order they were captured.
+      final lastModified = {
+        for (final file in scans) file: await file.lastModified(),
+      };
+      scans.sort((a, b) => lastModified[a]!.compareTo(lastModified[b]!));
+      for (final file in scans) {
+        final length = await file.length();
+        if (length == 0) {
+          await file.delete();
+          logger.fw(
+            'Previous scan ${file.path} was empty and has been deleted.',
+            className: runtimeType.toString(),
+            methodName: "initialize",
+          );
+          continue;
+        }
+        validScans.add(file);
+      }
+      logger.fd(
+        "Restored ${validScans.length} scans.",
+        className: runtimeType.toString(),
+        methodName: "initialize",
+      );
+      emit(
+        validScans.isEmpty
+            ? const DocumentScannerState()
+            : DocumentScannerState(
+                scans: validScans,
+                status: LoadingStatus.loaded,
+              ),
+      );
+    } catch (error, stackTrace) {
+      logger.fe(
+        "Could not restore scans.",
+        className: runtimeType.toString(),
+        methodName: "initialize",
+        error: error,
+        stackTrace: stackTrace,
+      );
+      emit(const DocumentScannerState(status: LoadingStatus.error));
     }
-    logger.fd(
-      "Restored ${validScans.length} scans.",
-      className: runtimeType.toString(),
-      methodName: "initialize",
-    );
-    emit(
-      validScans.isEmpty
-          ? const DocumentScannerState()
-          : DocumentScannerState(
-              scans: validScans,
-              status: LoadingStatus.loaded,
-            ),
-    );
   }
 
-  void addScan(File file) async {
+  void addScans(List<File> files) {
+    if (files.isEmpty) {
+      return;
+    }
     emit(
       DocumentScannerState(
         status: LoadingStatus.loaded,
-        scans: [...state.scans, file],
+        scans: [...state.scans, ...files],
       ),
     );
   }
@@ -97,7 +116,7 @@ class DocumentScannerCubit extends Cubit<DocumentScannerState> {
 
   Future<void> reset() async {
     try {
-      Future.wait([for (final file in state.scans) file.delete()]);
+      await Future.wait([for (final file in state.scans) file.delete()]);
       imageCache.clear();
     } catch (_) {
       addError(TransientPaperlessApiError(code: ErrorCode.scanRemoveFailed));

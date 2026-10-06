@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:paperless_mobile/core/extensions/context_extensions.dart';
 import 'package:paperless_mobile/core/store/slices/local_user_account.dart';
 import 'package:paperless_mobile/features/settings/view/widgets/app_logs_tile.dart';
+import 'package:paperless_mobile/features/settings/view/widgets/auto_upload_pending_files_setting.dart';
 import 'package:paperless_mobile/features/settings/view/widgets/biometric_authentication_setting.dart';
 import 'package:paperless_mobile/features/settings/view/widgets/changelogs_tile.dart';
 import 'package:paperless_mobile/features/settings/view/widgets/clear_storage_settings.dart';
@@ -13,6 +14,7 @@ import 'package:paperless_mobile/features/settings/view/widgets/default_download
 import 'package:paperless_mobile/features/settings/view/widgets/default_share_file_type_setting.dart';
 import 'package:paperless_mobile/features/settings/view/widgets/enforce_pdf_upload_setting.dart';
 import 'package:paperless_mobile/features/settings/view/widgets/language_selection_setting.dart';
+import 'package:paperless_mobile/features/settings/view/widgets/scanner_type_setting.dart';
 import 'package:paperless_mobile/features/settings/view/widgets/skip_document_prepraration_on_share_setting.dart';
 import 'package:paperless_mobile/features/settings/view/widgets/theme_mode_setting.dart';
 import 'package:paperless_mobile/generated/l10n/app_localizations.dart';
@@ -37,8 +39,10 @@ class SettingsPage extends StatelessWidget {
           _buildSectionHeader(context, S.of(context)!.behavior),
           const DefaultDownloadFileTypeSetting(),
           const DefaultShareFileTypeSetting(),
+          const ScannerTypeSetting(),
           const EnforcePdfUploadSetting(),
           const SkipDocumentPreprationOnShareSetting(),
+          const AutoUploadPendingFilesSetting(),
           _buildSectionHeader(context, S.of(context)!.storage),
           const ClearCacheSetting(),
           _buildSectionHeader(context, S.of(context)!.misc),

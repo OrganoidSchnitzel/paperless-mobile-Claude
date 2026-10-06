@@ -191,11 +191,20 @@ class LocalNotificationService {
         title = "Document successfully created";
         body = task.taskFileName;
         timestampMillis = task.dateDone?.millisecondsSinceEpoch ?? 0;
-        payload = CreateDocumentSuccessPayload(
-          int.tryParse(task.relatedDocument ?? '') ?? -1,
-        );
+        payload = CreateDocumentSuccessPayload(task.relatedDocumentId ?? -1);
         break;
-      default:
+      case StatusEnum.revoked:
+        title = "Document processing was cancelled";
+        body = task.taskFileName;
+        timestampMillis = task.dateDone?.millisecondsSinceEpoch ?? 0;
+        break;
+      case StatusEnum.received:
+      case StatusEnum.retry:
+      case null:
+        title = "Processing document...";
+        body = task.taskFileName;
+        timestampMillis = task.dateCreated?.millisecondsSinceEpoch ?? 0;
+        showProgress = true;
         break;
     }
     await _plugin.show(

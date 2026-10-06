@@ -72,6 +72,7 @@ class _RadioSettingsDialogState<T> extends State<RadioSettingsDialog<T>> {
     return RadioListTile<T>(
       value: option.value,
       title: Text(option.label),
+      subtitle: option.description != null ? Text(option.description!) : null,
     );
   }
 }
@@ -79,6 +80,7 @@ class _RadioSettingsDialogState<T> extends State<RadioSettingsDialog<T>> {
 class RadioOption<T> {
   final T value;
   final String label;
+  final String? description;
 
-  RadioOption({required this.value, required this.label});
+  RadioOption({required this.value, required this.label, this.description});
 }

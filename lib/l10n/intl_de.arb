@@ -1197,5 +1197,75 @@
   "youHaveNoViewsOnYourDashboardYet": "Du hast noch keine Ansichten zu deinem Dashboard hinzugefügt.",
   "@youHaveNoViewsOnYourDashboardYet": {},
   "youreOffline": "Du bist offline.",
-  "@youreOffline": {}
+  "@youreOffline": {},
+  "scannerType": "Dokumentenscanner",
+  "@scannerType": {},
+  "scannerTypeAutomatic": "Automatisch",
+  "@scannerTypeAutomatic": {},
+  "scannerTypeAutomaticDescription": "Verwendet den Dokumentenscanner des Systems (Google ML Kit bzw. Apple VisionKit) mit automatischer Kantenerkennung und Bildoptimierung. Ist dieser nicht verfügbar, wird der integrierte Scanner verwendet.",
+  "@scannerTypeAutomaticDescription": {},
+  "scannerTypeEdgeDetection": "Integrierter Scanner",
+  "@scannerTypeEdgeDetection": {},
+  "scannerTypeEdgeDetectionDescription": "Verwendet den integrierten, auf OpenCV basierenden Scanner, der keine Google Play-Dienste benötigt.",
+  "@scannerTypeEdgeDetectionDescription": {},
+  "documentUploadProgress": "Wird hochgeladen... {progress}%",
+  "@documentUploadProgress": {
+    "placeholders": {
+      "progress": {
+        "type": "int"
+      }
+    }
+  },
+  "documentUploadFailed": "Hochladen fehlgeschlagen",
+  "@documentUploadFailed": {},
+  "documentUploadedWaitingForProcessing": "Hochgeladen. Warte auf die Verarbeitung durch Paperless...",
+  "@documentUploadedWaitingForProcessing": {},
+  "documentProcessedSuccessfully": "Das Dokument wurde erfolgreich von Paperless verarbeitet.",
+  "@documentProcessedSuccessfully": {},
+  "documentProcessingFailed": "Paperless konnte das Dokument nicht verarbeiten",
+  "@documentProcessingFailed": {},
+  "documentProcessingContinuesInBackground": "Du kannst diese Ansicht schließen, das Dokument wird trotzdem von Paperless verarbeitet.",
+  "@documentProcessingContinuesInBackground": {},
+  "retry": "Erneut versuchen",
+  "@retry": {},
+  "restoringScans": "Scans werden wiederhergestellt...",
+  "@restoringScans": {},
+  "couldNotRestoreScans": "Deine vorherigen Scans konnten nicht wiederhergestellt werden.",
+  "@couldNotRestoreScans": {},
+  "deleteAllScansConfirmation": "{count, plural, one{Möchtest du die gescannte Seite löschen?} other{Möchtest du alle {count} gescannten Seiten löschen?}}",
+  "@deleteAllScansConfirmation": {
+    "placeholders": {
+      "count": {
+        "type": "num"
+      }
+    }
+  },
+  "autoUploadPendingFiles": "Ausstehende Dateien automatisch hochladen",
+  "@autoUploadPendingFiles": {},
+  "autoUploadPendingFilesDescription": "Offline geteilte Dateien werden ohne Upload-Formular hochgeladen, sobald du wieder online bist und die App geöffnet ist",
+  "@autoUploadPendingFilesDescription": {},
+  "fileWillBeUploadedWhenOnline": "{filename} wird hochgeladen, sobald du wieder online bist.",
+  "@fileWillBeUploadedWhenOnline": {
+    "placeholders": {
+      "filename": {
+        "type": "String"
+      }
+    }
+  },
+  "pendingFilesUploaded": "{count, plural, one{1 ausstehende Datei wurde hochgeladen.} other{{count} ausstehende Dateien wurden hochgeladen.}}",
+  "@pendingFilesUploaded": {
+    "placeholders": {
+      "count": {
+        "type": "num"
+      }
+    }
+  },
+  "couldNotUploadPendingFiles": "{count, plural, one{1 ausstehende Datei konnte nicht hochgeladen werden.} other{{count} ausstehende Dateien konnten nicht hochgeladen werden.}}",
+  "@couldNotUploadPendingFiles": {
+    "placeholders": {
+      "count": {
+        "type": "num"
+      }
+    }
+  }
 }
