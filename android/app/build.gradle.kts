@@ -66,7 +66,14 @@ android {
 
     buildTypes {
         getByName("release") {
-            signingConfig = signingConfigs.getByName("release")
+            // Without key.properties (e.g. in a fork without signing secrets),
+            // fall back to the debug key so release builds can still be
+            // installed for testing.
+            signingConfig = if (keystorePropsFile.exists()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
         getByName("debug") {
             applicationIdSuffix = ".debug"
