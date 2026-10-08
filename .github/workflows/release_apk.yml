@@ -1,0 +1,131 @@
+name: Release APK
+on:
+  # Pushing a tag like v4.5.1 creates a release with that name.
+  push:
+    tags:
+      - "v*"
+  # Manual run: creates a release for the selected branch, named after the
+  # version in pubspec.yaml and the run number.
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: "Mark as pre-release"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  release:
+    name: Build and release APKs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # The Flutter SDK submodule needs its tags to determine its version.
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set FLUTTER_ROOT environment variable
+        run: echo "FLUTTER_ROOT=$GITHUB_WORKSPACE/flutter/bin" >> $GITHUB_ENV
+
+      # Optional: without these secrets the APKs are signed with a temporary
+      # debug key, so they cannot be installed as an update of each other.
+      - name: Setup signing config
+        id: signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::warning::No signing secrets configured, the APKs are signed with a temporary debug key."
+            echo "signed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/release.jks
+          {
+            echo "storeFile=release.jks"
+            echo "storePassword=$ANDROID_KEYSTORE_PASSWORD"
+            echo "keyAlias=$ANDROID_KEY_ALIAS"
+            echo "keyPassword=${ANDROID_KEY_PASSWORD:-$ANDROID_KEYSTORE_PASSWORD}"
+          } > android/key.properties
+          echo "signed=true" >> $GITHUB_OUTPUT
+
+      - name: Get packages and run codegen
+        run: |
+          bash scripts/install_dependencies_with_submodule.sh
+          bash scripts/update_changelogs.sh
+
+      - name: Determine version
+        id: version
+        run: |
+          version_line=$(grep '^version:' pubspec.yaml | sed 's/version: *//')
+          version_name=${version_line%%+*}
+          pubspec_build=${version_line##*+}
+          # Keeps the version code increasing between runs, so that newer
+          # builds can be installed as an update.
+          build_number=$(( pubspec_build * 1000 + GITHUB_RUN_NUMBER % 1000 ))
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            tag="$GITHUB_REF_NAME"
+          else
+            tag="v${version_name}-build.${GITHUB_RUN_NUMBER}"
+          fi
+          echo "name=$version_name" >> $GITHUB_OUTPUT
+          echo "build_number=$build_number" >> $GITHUB_OUTPUT
+          echo "tag=$tag" >> $GITHUB_OUTPUT
+
+      - name: Build APKs
+        run: |
+          $FLUTTER_ROOT/flutter build apk --release --split-per-abi \
+            --build-name ${{ steps.version.outputs.name }} \
+            --build-number ${{ steps.version.outputs.build_number }}
+          $FLUTTER_ROOT/flutter build apk --release \
+            --build-name ${{ steps.version.outputs.name }} \
+            --build-number ${{ steps.version.outputs.build_number }}
+
+      - name: Collect APKs
+        run: |
+          mkdir -p dist
+          out=build/app/outputs/flutter-apk
+          prefix="paperless-mobile-${{ steps.version.outputs.tag }}"
+          cp "$out/app-release.apk" "dist/$prefix-universal.apk"
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            cp "$out/app-$abi-release.apk" "dist/$prefix-$abi.apk"
+          done
+          (cd dist && sha256sum *.apk > SHA256SUMS.txt)
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          SIGNED: ${{ steps.signing.outputs.signed }}
+          PRERELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease }}
+        run: |
+          {
+            echo "**Which APK?** Most phones need \`arm64-v8a\`. If unsure, use \`universal\` (larger, works everywhere)."
+            echo
+            echo "This build is signed with a different key than the Google Play / F-Droid versions, so uninstall those first."
+            if [ "$SIGNED" != "true" ]; then
+              echo
+              echo "⚠️ Signed with a temporary debug key: to install a newer build, uninstall this one first. Configure the signing secrets to fix this."
+            fi
+          } > notes.md
+          args=(--title "$TAG" --notes-file notes.md --generate-notes --target "$GITHUB_SHA")
+          if [ "$PRERELEASE" = "true" ]; then
+            args+=(--prerelease)
+          fi
+          gh release create "$TAG" dist/* "${args[@]}"
